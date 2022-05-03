@@ -1,0 +1,18 @@
+[package]
+name = "git2-ureq"
+version = "0.1.0"
+authors = ["Yesterday17 <mmf@mmf.moe>"]
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/git2-ureq"
+description = """
+Backend for an HTTP transport in libgit2 powered by ureq.
+Intended to be used with the git2 crate.
+"""
+edition = "2021"
+
+[dependencies]
+git2 = { version = "0.14", default-features = false }
+ureq = "2.4.0"
+url = "2.2.2"
+log = "0.4"
+
