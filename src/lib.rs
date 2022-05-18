@@ -2,6 +2,8 @@ use std::error;
 use std::io;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex, Once};
+use ureq::AgentBuilder;
+use ureq::Proxy;
 use url::Url;
 
 use log::{debug, info};
@@ -16,6 +18,7 @@ struct UreqTransport {
     /// This is an empty string until the first action is performed.
     /// If there is an HTTP redirect, this will be updated with the new URL.
     base_url: Arc<Mutex<String>>,
+    proxy: Option<Proxy>,
 }
 
 struct UreqSubtransport {
@@ -25,19 +28,29 @@ struct UreqSubtransport {
     method: &'static str,
     reader: Option<Box<dyn Read + Send>>,
     sent_request: bool,
+    proxy: Option<Proxy>,
 }
 
-pub unsafe fn register() {
+pub unsafe fn register(proxy: Option<String>) {
     static INIT: Once = Once::new();
 
+    let proxy = proxy.map(|s| Proxy::new(s).ok()).flatten();
+    let p = proxy.clone();
+
     INIT.call_once(move || {
-        git2::transport::register("http", move |remote| factory(remote)).unwrap();
-        git2::transport::register("https", move |remote| factory(remote)).unwrap();
+        git2::transport::register("http", move |remote| factory(remote, proxy.as_ref())).unwrap();
+        git2::transport::register("https", move |remote| factory(remote, p.as_ref())).unwrap();
     });
 }
 
-fn factory(remote: &git2::Remote<'_>) -> Result<Transport, Error> {
-    Transport::smart(remote, true, UreqTransport::default())
+fn factory(remote: &git2::Remote<'_>, proxy: Option<&Proxy>) -> Result<Transport, Error> {
+    Transport::smart(remote, true, UreqTransport::new(proxy.cloned()))
+}
+
+impl UreqTransport {
+    pub(crate) fn new(proxy: Option<Proxy>) -> Self {
+        Self { proxy, ..Default::default() }
+    }
 }
 
 impl SmartSubtransport for UreqTransport {
@@ -66,6 +79,7 @@ impl SmartSubtransport for UreqTransport {
             method,
             reader: None,
             sent_request: false,
+            proxy: self.proxy.clone()
         }))
     }
 
@@ -86,6 +100,11 @@ impl UreqSubtransport {
 
         let agent = format!("git/1.0 (git2-ureq {})", env!("CARGO_PKG_VERSION"));
 
+        let client = match &self.proxy {
+            Some(p) => AgentBuilder::new().proxy(p.clone()),
+            None => AgentBuilder::new(),
+        }.build();
+
         // Parse our input URL to figure out the host
         let url = format!("{}{}", self.base_url.lock().unwrap(), self.url_path);
         let parsed = Url::parse(&url).map_err(|_| self.err("invalid url, failed to parse"))?;
@@ -96,7 +115,7 @@ impl UreqSubtransport {
 
         // Prep the request
         debug!("request to {}", url);
-        let request = ureq::request(self.method, &url)
+        let request = client.request(self.method, &url)
             .set("User-Agent", &agent)
             .set("Host", &host)
             .set("Expect", "");
