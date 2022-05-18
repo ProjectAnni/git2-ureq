@@ -2,6 +2,7 @@ use std::error;
 use std::io;
 use std::io::prelude::*;
 use std::sync::{Arc, Mutex, Once};
+use ureq::Agent;
 use ureq::AgentBuilder;
 use ureq::Proxy;
 use url::Url;
@@ -28,7 +29,7 @@ struct UreqSubtransport {
     method: &'static str,
     reader: Option<Box<dyn Read + Send>>,
     sent_request: bool,
-    proxy: Option<Proxy>,
+    client: Agent,
 }
 
 pub unsafe fn register(proxy: Option<String>) {
@@ -49,7 +50,10 @@ fn factory(remote: &git2::Remote<'_>, proxy: Option<&Proxy>) -> Result<Transport
 
 impl UreqTransport {
     pub(crate) fn new(proxy: Option<Proxy>) -> Self {
-        Self { proxy, ..Default::default() }
+        Self {
+            proxy,
+            ..Default::default()
+        }
     }
 }
 
@@ -79,7 +83,12 @@ impl SmartSubtransport for UreqTransport {
             method,
             reader: None,
             sent_request: false,
-            proxy: self.proxy.clone()
+            client: self
+                .proxy
+                .clone()
+                .map(|p| AgentBuilder::new().proxy(p))
+                .unwrap_or_else(AgentBuilder::new)
+                .build(),
         }))
     }
 
@@ -100,11 +109,6 @@ impl UreqSubtransport {
 
         let agent = format!("git/1.0 (git2-ureq {})", env!("CARGO_PKG_VERSION"));
 
-        let client = match &self.proxy {
-            Some(p) => AgentBuilder::new().proxy(p.clone()),
-            None => AgentBuilder::new(),
-        }.build();
-
         // Parse our input URL to figure out the host
         let url = format!("{}{}", self.base_url.lock().unwrap(), self.url_path);
         let parsed = Url::parse(&url).map_err(|_| self.err("invalid url, failed to parse"))?;
@@ -115,7 +119,9 @@ impl UreqSubtransport {
 
         // Prep the request
         debug!("request to {}", url);
-        let request = client.request(self.method, &url)
+        let request = self
+            .client
+            .request(self.method, &url)
             .set("User-Agent", &agent)
             .set("Host", &host)
             .set("Expect", "");
