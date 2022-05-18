@@ -17,3 +17,5 @@ ureq = "2.4.0"
 url = "2.2.2"
 log = "0.4"
 
+[features]
+socks-proxy = ["ureq/socks-proxy"]
