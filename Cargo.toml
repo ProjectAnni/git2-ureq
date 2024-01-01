@@ -1,6 +1,6 @@
 [package]
 name = "git2-ureq"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Yesterday17 <mmf@mmf.moe>"]
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/git2-ureq"
@@ -12,9 +12,9 @@ repository = "https://github.com/ProjectAnni/git2-ureq"
 edition = "2021"
 
 [dependencies]
-git2 = { version = "0.15", default-features = false }
-ureq = "2.4.0"
-url = "2.2.2"
+git2 = { version = "0.18", default-features = false }
+ureq = "2.8.0"
+url = "2.5.0"
 log = "0.4"
 
 [features]
